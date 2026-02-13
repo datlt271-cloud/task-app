@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <title>Task MVP</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
-    body { font-family: Arial; padding: 20px; }
+    body { font-family: Arial; padding: 20px; max-width: 600px; margin: auto; }
     input, button { padding: 8px; margin: 5px; }
     .task { border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
-    .risk-high { color: red; }
-    .risk-medium { color: orange; }
-    .risk-low { color: green; }
+    .fresh { background: #eee; }
+    .aging { background: #fff3cd; }
+    .stale { background: #f8d7da; }
   </style>
 </head>
 <body>
@@ -24,6 +24,55 @@
 
 <div id="taskList"></div>
 
-<script src="app.js"></script>
+<script>
+const supabaseUrl = "https://klpugkhbbkmujqydaanu.supabase.co";
+const supabaseKey = "sb_publishable_6Hyze7JOr76psF3h7v1d4w_YqNTxSvF";
+const { createClient } = supabase;
+const db = createClient(supabaseUrl, supabaseKey);
+
+async function loadTasks() {
+  const { data, error } = await db.from("tasks").select("*").order("created_at", { ascending: false });
+  if (error) console.error(error);
+
+  const list = document.getElementById("taskList");
+  list.innerHTML = "";
+
+  data.forEach(task => {
+    const ageDays = (new Date() - new Date(task.created_at)) / (1000*60*60*24);
+
+    let ageClass = "fresh";
+    if (ageDays > 3) ageClass = "aging";
+    if (ageDays > 7) ageClass = "stale";
+
+    list.innerHTML += `
+      <div class="task ${ageClass}">
+        <b>${task.title}</b><br>
+        Progress: ${task.progress}%<br>
+        <button onclick="updateProgress('${task.id}', 10)">+10%</button>
+      </div>
+    `;
+  });
+}
+
+async function addTask() {
+  const input = document.getElementById("taskInput");
+  if (!input.value) return;
+
+  await db.from("tasks").insert([{ title: input.value }]);
+  input.value = "";
+  loadTasks();
+}
+
+async function updateProgress(id, amount) {
+  const { data } = await db.from("tasks").select("progress").eq("id", id).single();
+  let newProgress = Math.min((data.progress || 0) + amount, 100);
+
+  await db.from("tasks").update({ progress: newProgress }).eq("id", id);
+  loadTasks();
+}
+
+loadTasks();
+</script>
+
 </body>
 </html>
