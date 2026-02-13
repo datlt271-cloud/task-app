@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Task MVP</title>
+  <title>Task Engine</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -10,9 +10,12 @@
     body {
       font-family: Arial;
       padding: 20px;
-      max-width: 600px;
+      max-width: 650px;
       margin: auto;
+      background: #f7f7f7;
     }
+
+    h2 { margin-bottom: 20px; }
 
     input, button {
       padding: 8px;
@@ -22,17 +25,31 @@
     .task {
       border: 1px solid #ddd;
       padding: 12px;
-      margin: 10px 0;
-      border-radius: 6px;
+      margin: 12px 0;
+      border-radius: 8px;
+      background: white;
     }
 
-    .fresh { background: #f5f5f5; }
-    .aging { background: #fff3cd; }
-    .stale { background: #f8d7da; }
+    .fresh { border-left: 6px solid #999; }
+    .aging { border-left: 6px solid orange; }
+    .stale { border-left: 6px solid red; }
 
     .risk-low { color: green; font-weight: bold; }
     .risk-medium { color: orange; font-weight: bold; }
     .risk-high { color: red; font-weight: bold; }
+
+    .progress-bar {
+      height: 6px;
+      background: #ddd;
+      border-radius: 4px;
+      margin: 6px 0;
+    }
+
+    .progress-fill {
+      height: 6px;
+      background: green;
+      border-radius: 4px;
+    }
   </style>
 </head>
 
@@ -70,13 +87,13 @@ async function loadTasks() {
 
   data.forEach(task => {
 
-    // ===== AGING LOGIC =====
+    // ===== AGING =====
     const ageDays = (today - new Date(task.created_at)) / (1000*60*60*24);
     let ageClass = "fresh";
     if (ageDays > 3) ageClass = "aging";
     if (ageDays > 7) ageClass = "stale";
 
-    // ===== RISK LOGIC =====
+    // ===== RISK =====
     let riskText = "On Track";
     let riskClass = "risk-low";
 
@@ -96,10 +113,17 @@ async function loadTasks() {
     list.innerHTML += `
       <div class="task ${ageClass}">
         <b>${task.title}</b><br>
-        Progress: ${task.progress || 0}%<br>
         Due: ${task.due_date || "Not set"}<br>
-        <span class="${riskClass}">${riskText}</span><br><br>
+        <span class="${riskClass}">${riskText}</span>
+
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${task.progress || 0}%"></div>
+        </div>
+
+        Progress: ${task.progress || 0}%<br><br>
+
         <button onclick="updateProgress('${task.id}', 10)">+10%</button>
+        <button onclick="updateProgress('${task.id}', -10)">-10%</button>
         <button onclick="deleteTask('${task.id}')">Delete</button>
       </div>
     `;
@@ -120,8 +144,6 @@ async function addTask() {
 
   input.value = "";
   document.getElementById("dueDateInput").value = "";
-
-  loadTasks();
 }
 
 async function updateProgress(id, amount) {
@@ -131,26 +153,31 @@ async function updateProgress(id, amount) {
     .eq("id", id)
     .single();
 
-  let newProgress = Math.min((data.progress || 0) + amount, 100);
+  let newProgress = Math.max(0, Math.min((data.progress || 0) + amount, 100));
 
   await db
     .from("tasks")
     .update({ progress: newProgress })
     .eq("id", id);
-
-  loadTasks();
 }
 
 async function deleteTask(id) {
   await db.from("tasks").delete().eq("id", id);
-  loadTasks();
 }
+
+// ===== REALTIME SYNC =====
+db.channel('realtime-tasks')
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'tasks' },
+    () => {
+      loadTasks();
+    }
+  )
+  .subscribe();
 
 loadTasks();
 </script>
 
 </body>
 </html>
-
-
-
