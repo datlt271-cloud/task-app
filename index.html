@@ -1,3 +1,5 @@
+const supabaseUrl = "https://klpugkhbbkmujqydaanu.supabase.co";
+const supabaseKey = "sb_publishable_6Hyze7JOr76psF3h7v1d4w_YqNTxSvF";
 <!DOCTYPE html>
 <html>
 <head>
@@ -7,19 +9,41 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
-    body { font-family: Arial; padding: 20px; max-width: 600px; margin: auto; }
-    input, button { padding: 8px; margin: 5px; }
-    .task { border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
-    .fresh { background: #eee; }
+    body {
+      font-family: Arial;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+    }
+
+    input, button {
+      padding: 8px;
+      margin: 5px;
+    }
+
+    .task {
+      border: 1px solid #ddd;
+      padding: 12px;
+      margin: 10px 0;
+      border-radius: 6px;
+    }
+
+    .fresh { background: #f5f5f5; }
     .aging { background: #fff3cd; }
     .stale { background: #f8d7da; }
+
+    .risk-low { color: green; font-weight: bold; }
+    .risk-medium { color: orange; font-weight: bold; }
+    .risk-high { color: red; font-weight: bold; }
   </style>
 </head>
+
 <body>
 
 <h2>My Tasks</h2>
 
 <input id="taskInput" placeholder="Task name">
+<input id="dueDateInput" type="date">
 <button onclick="addTask()">Add Task</button>
 
 <div id="taskList"></div>
@@ -31,24 +55,54 @@ const { createClient } = supabase;
 const db = createClient(supabaseUrl, supabaseKey);
 
 async function loadTasks() {
-  const { data, error } = await db.from("tasks").select("*").order("created_at", { ascending: false });
-  if (error) console.error(error);
+  const { data, error } = await db
+    .from("tasks")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
 
   const list = document.getElementById("taskList");
   list.innerHTML = "";
 
-  data.forEach(task => {
-    const ageDays = (new Date() - new Date(task.created_at)) / (1000*60*60*24);
+  const today = new Date();
 
+  data.forEach(task => {
+
+    // ===== AGING LOGIC =====
+    const ageDays = (today - new Date(task.created_at)) / (1000*60*60*24);
     let ageClass = "fresh";
     if (ageDays > 3) ageClass = "aging";
     if (ageDays > 7) ageClass = "stale";
 
+    // ===== RISK LOGIC =====
+    let riskText = "On Track";
+    let riskClass = "risk-low";
+
+    if (task.due_date) {
+      const due = new Date(task.due_date);
+      const daysRemaining = (due - today) / (1000*60*60*24);
+
+      if (daysRemaining < 0) {
+        riskText = "Delayed";
+        riskClass = "risk-high";
+      } else if (task.progress < 30 && daysRemaining < 3) {
+        riskText = "At Risk";
+        riskClass = "risk-medium";
+      }
+    }
+
     list.innerHTML += `
       <div class="task ${ageClass}">
         <b>${task.title}</b><br>
-        Progress: ${task.progress}%<br>
+        Progress: ${task.progress || 0}%<br>
+        Due: ${task.due_date || "Not set"}<br>
+        <span class="${riskClass}">${riskText}</span><br><br>
         <button onclick="updateProgress('${task.id}', 10)">+10%</button>
+        <button onclick="deleteTask('${task.id}')">Delete</button>
       </div>
     `;
   });
@@ -56,18 +110,41 @@ async function loadTasks() {
 
 async function addTask() {
   const input = document.getElementById("taskInput");
+  const dueDate = document.getElementById("dueDateInput").value;
+
   if (!input.value) return;
 
-  await db.from("tasks").insert([{ title: input.value }]);
+  await db.from("tasks").insert([{
+    title: input.value,
+    progress: 0,
+    due_date: dueDate || null
+  }]);
+
   input.value = "";
+  document.getElementById("dueDateInput").value = "";
+
   loadTasks();
 }
 
 async function updateProgress(id, amount) {
-  const { data } = await db.from("tasks").select("progress").eq("id", id).single();
+  const { data } = await db
+    .from("tasks")
+    .select("progress")
+    .eq("id", id)
+    .single();
+
   let newProgress = Math.min((data.progress || 0) + amount, 100);
 
-  await db.from("tasks").update({ progress: newProgress }).eq("id", id);
+  await db
+    .from("tasks")
+    .update({ progress: newProgress })
+    .eq("id", id);
+
+  loadTasks();
+}
+
+async function deleteTask(id) {
+  await db.from("tasks").delete().eq("id", id);
   loadTasks();
 }
 
@@ -76,3 +153,5 @@ loadTasks();
 
 </body>
 </html>
+
+
