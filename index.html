@@ -1,65 +1,101 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Task Engine</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <style>
-    body {
-      font-family: Arial;
-      padding: 20px;
-      max-width: 650px;
-      margin: auto;
-      background: #f7f7f7;
-    }
+<title>Tasks</title>
 
-    h2 { margin-bottom: 20px; }
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f2f2f7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tasks">
 
-    input, button {
-      padding: 8px;
-      margin: 5px;
-    }
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    .task {
-      border: 1px solid #ddd;
-      padding: 12px;
-      margin: 12px 0;
-      border-radius: 8px;
-      background: white;
-    }
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f2f2f7;
+  margin: 0;
+  padding: 20px;
+}
 
-    .fresh { border-left: 6px solid #999; }
-    .aging { border-left: 6px solid orange; }
-    .stale { border-left: 6px solid red; }
+h2 {
+  margin-bottom: 20px;
+  font-size: 28px;
+}
 
-    .risk-low { color: green; font-weight: bold; }
-    .risk-medium { color: orange; font-weight: bold; }
-    .risk-high { color: red; font-weight: bold; }
+input {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+  margin-right: 6px;
+}
 
-    .progress-bar {
-      height: 6px;
-      background: #ddd;
-      border-radius: 4px;
-      margin: 6px 0;
-    }
+button {
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: none;
+  background: #007aff;
+  color: white;
+  font-weight: 500;
+}
 
-    .progress-fill {
-      height: 6px;
-      background: green;
-      border-radius: 4px;
-    }
-  </style>
+.task {
+  background: white;
+  padding: 18px;
+  border-radius: 18px;
+  margin-bottom: 18px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+}
+
+.fresh { border-left: 6px solid #ccc; }
+.aging { border-left: 6px solid orange; }
+.stale { border-left: 6px solid red; }
+
+.risk-low { color: green; font-weight: bold; }
+.risk-medium { color: orange; font-weight: bold; }
+.risk-high { color: red; font-weight: bold; }
+
+.progress-bar {
+  height: 8px;
+  background: #eee;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+
+.progress-fill {
+  height: 8px;
+  background: #007aff;
+  border-radius: 6px;
+}
+
+.actions button {
+  margin-right: 8px;
+  background: #e5e5ea;
+  color: #007aff;
+}
+
+.delete-btn {
+  color: red;
+}
+</style>
 </head>
 
 <body>
 
 <h2>My Tasks</h2>
 
-<input id="taskInput" placeholder="Task name">
-<input id="dueDateInput" type="date">
-<button onclick="addTask()">Add Task</button>
+<div>
+  <input id="taskInput" placeholder="Task name">
+  <input id="dueDateInput" type="date">
+  <button onclick="addTask()">Add</button>
+</div>
+
+<br>
 
 <div id="taskList"></div>
 
@@ -87,13 +123,13 @@ async function loadTasks() {
 
   data.forEach(task => {
 
-    // ===== AGING =====
+    // AGING
     const ageDays = (today - new Date(task.created_at)) / (1000*60*60*24);
     let ageClass = "fresh";
     if (ageDays > 3) ageClass = "aging";
     if (ageDays > 7) ageClass = "stale";
 
-    // ===== RISK =====
+    // RISK
     let riskText = "On Track";
     let riskClass = "risk-low";
 
@@ -112,7 +148,7 @@ async function loadTasks() {
 
     list.innerHTML += `
       <div class="task ${ageClass}">
-        <b>${task.title}</b><br>
+        <b>${task.title}</b><br><br>
         Due: ${task.due_date || "Not set"}<br>
         <span class="${riskClass}">${riskText}</span>
 
@@ -122,9 +158,11 @@ async function loadTasks() {
 
         Progress: ${task.progress || 0}%<br><br>
 
-        <button onclick="updateProgress('${task.id}', 10)">+10%</button>
-        <button onclick="updateProgress('${task.id}', -10)">-10%</button>
-        <button onclick="deleteTask('${task.id}')">Delete</button>
+        <div class="actions">
+          <button onclick="updateProgress('${task.id}', 10)">+10%</button>
+          <button onclick="updateProgress('${task.id}', -10)">-10%</button>
+          <button class="delete-btn" onclick="deleteTask('${task.id}')">Delete</button>
+        </div>
       </div>
     `;
   });
@@ -155,8 +193,7 @@ async function updateProgress(id, amount) {
 
   let newProgress = Math.max(0, Math.min((data.progress || 0) + amount, 100));
 
-  await db
-    .from("tasks")
+  await db.from("tasks")
     .update({ progress: newProgress })
     .eq("id", id);
 }
@@ -165,7 +202,7 @@ async function deleteTask(id) {
   await db.from("tasks").delete().eq("id", id);
 }
 
-// ===== REALTIME SYNC =====
+// REALTIME
 db.channel('realtime-tasks')
   .on(
     'postgres_changes',
