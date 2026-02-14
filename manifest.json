@@ -1,16 +1,9 @@
 {
-  "name": "Task Engine",
+  "name": "Execution Engine",
   "short_name": "Tasks",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
-  "icons": [
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    }
-  ]
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7"
 }
 
