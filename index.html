@@ -9,7 +9,6 @@
 <meta name="theme-color" content="#f2f2f7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -110,7 +109,7 @@ const { createClient } = supabase;
 const db = createClient(supabaseUrl, supabaseKey);
 
 /* =========================
-   DATE PARSER (DD/MM only)
+   DATE PARSER
    ========================= */
 
 function parseDate(text) {
@@ -119,10 +118,9 @@ function parseDate(text) {
     jul:7,aug:8,sep:9,oct:10,nov:11,dec:12
   };
 
-  // Reject year
-  if (/\d{4}/.test(text)) return { error:"Không nhập năm. Chỉ dùng ngày/tháng." };
+  if (/\d{4}/.test(text))
+    return { error:"Không nhập năm. Chỉ dùng ngày/tháng." };
 
-  // Pattern 14/2 hoặc 14-2
   let match = text.match(/(\d{1,2})[\/\-](\d{1,2})/);
   if (match) {
     let day = parseInt(match[1]);
@@ -134,7 +132,6 @@ function parseDate(text) {
     return validateDate(day, month);
   }
 
-  // Pattern 14 Feb
   match = text.match(/(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
   if (match) {
     let day = parseInt(match[1]);
@@ -142,7 +139,6 @@ function parseDate(text) {
     return validateDate(day, month);
   }
 
-  // Pattern Feb 14
   match = text.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{1,2})/i);
   if (match) {
     let month = monthNames[match[1].toLowerCase()];
@@ -174,7 +170,6 @@ async function smartAdd() {
   if (!input.value) return;
 
   const parsed = parseDate(input.value);
-
   if (parsed.error) {
     errorBox.innerText = parsed.error;
     return;
@@ -182,10 +177,10 @@ async function smartAdd() {
 
   let due = parsed.date;
 
-  // Remove date text from title
   let cleanTitle = input.value
     .replace(/\d{1,2}[\/\-]\d{1,2}/, "")
     .replace(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i, "")
+    .replace(/urgent/i, "")
     .trim();
 
   await db.from("tasks").insert([{
@@ -199,30 +194,22 @@ async function smartAdd() {
   input.value = "";
 }
 
+/* ENTER KEY SUPPORT */
+document.getElementById("taskInput")
+  .addEventListener("keydown", function(e){
+    if(e.key === "Enter"){
+      smartAdd();
+    }
+});
+
 /* =========================
-   LOAD TASKS + RISK
+   LOAD + RISK ENGINE
    ========================= */
 
 async function loadTasks() {
   const { data } = await db.from("tasks").select("*");
   const today = new Date();
   const currentYear = today.getFullYear();
-
-  data.sort((a,b)=>priorityScore(b)-priorityScore(a));
-
-  function priorityScore(task){
-    let score = 0;
-    if(task.priority===1) score+=50;
-
-    if(task.due_date){
-      const due = new Date(`${currentYear}-${task.due_date}`);
-      const diff = (due - today)/(1000*60*60*24);
-      if(diff<0) score+=100;
-      else if(diff<=2 && task.progress<50) score+=70;
-    }
-
-    return score;
-  }
 
   const list = document.getElementById("taskList");
   list.innerHTML = "";
@@ -231,7 +218,11 @@ async function loadTasks() {
     let risk="On Track";
     let riskClass="risk-low";
 
-    if(task.due_date){
+    if(task.progress >= 100){
+      risk="Completed";
+      riskClass="risk-low";
+    }
+    else if(task.due_date){
       const due = new Date(`${currentYear}-${task.due_date}`);
       const diff = (due - today)/(1000*60*60*24);
 
