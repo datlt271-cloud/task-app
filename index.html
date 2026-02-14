@@ -20,7 +20,20 @@ body {
   padding: 20px;
 }
 
-h2 { font-size: 26px; margin-bottom: 20px; }
+h2 { font-size: 26px; margin-bottom: 10px; }
+
+.focus-box {
+  background: #fff3cd;
+  padding: 18px;
+  border-radius: 18px;
+  margin-bottom: 25px;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.05);
+}
+
+.focus-title {
+  font-weight: bold;
+  font-size: 18px;
+}
 
 input {
   width: 100%;
@@ -96,6 +109,8 @@ button {
 
 <h2>Execution Engine</h2>
 
+<div id="focusBox"></div>
+
 <input id="taskInput" placeholder="Nhập task + ngày (VD: Finish report 14/2)">
 <button class="primary" onclick="smartAdd()">Add Task</button>
 
@@ -108,10 +123,7 @@ const supabaseKey = "sb_publishable_6Hyze7JOr76psF3h7v1d4w_YqNTxSvF";
 const { createClient } = supabase;
 const db = createClient(supabaseUrl, supabaseKey);
 
-/* =========================
-   DATE PARSER
-   ========================= */
-
+/* DATE PARSER */
 function parseDate(text) {
   const monthNames = {
     jan:1,feb:2,mar:3,apr:4,may:5,jun:6,
@@ -119,49 +131,32 @@ function parseDate(text) {
   };
 
   if (/\d{4}/.test(text))
-    return { error:"Không nhập năm. Chỉ dùng ngày/tháng." };
+    return { error:"Không nhập năm." };
 
   let match = text.match(/(\d{1,2})[\/\-](\d{1,2})/);
   if (match) {
     let day = parseInt(match[1]);
     let month = parseInt(match[2]);
-
     if (day <= 12 && month <= 12)
-      return { error:"Format mơ hồ. Dùng 14/2 hoặc 14 Feb." };
-
+      return { error:"Format mơ hồ." };
     return validateDate(day, month);
   }
 
   match = text.match(/(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
-  if (match) {
-    let day = parseInt(match[1]);
-    let month = monthNames[match[2].toLowerCase()];
-    return validateDate(day, month);
-  }
+  if (match) return validateDate(parseInt(match[1]), monthNames[match[2].toLowerCase()]);
 
   match = text.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{1,2})/i);
-  if (match) {
-    let month = monthNames[match[1].toLowerCase()];
-    let day = parseInt(match[2]);
-    return validateDate(day, month);
-  }
+  if (match) return validateDate(parseInt(match[2]), monthNames[match[1].toLowerCase()]);
 
   return { date:null };
 }
 
 function validateDate(day, month) {
-  if (month <1 || month>12) return { error:"Tháng không hợp lệ." };
-  if (day <1 || day>31) return { error:"Ngày không hợp lệ." };
-
-  return {
-    date: `${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`
-  };
+  if (month<1||month>12||day<1||day>31) return { error:"Ngày/tháng không hợp lệ." };
+  return { date:`${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}` };
 }
 
-/* =========================
-   ADD TASK
-   ========================= */
-
+/* ADD TASK */
 async function smartAdd() {
   const input = document.getElementById("taskInput");
   const errorBox = document.getElementById("errorBox");
@@ -175,8 +170,6 @@ async function smartAdd() {
     return;
   }
 
-  let due = parsed.date;
-
   let cleanTitle = input.value
     .replace(/\d{1,2}[\/\-]\d{1,2}/, "")
     .replace(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i, "")
@@ -186,60 +179,93 @@ async function smartAdd() {
   await db.from("tasks").insert([{
     title: cleanTitle,
     progress: 0,
-    due_date: due,
+    due_date: parsed.date,
     priority: input.value.toLowerCase().includes("urgent") ? 1 : 2,
     last_update: new Date().toISOString()
   }]);
 
-  input.value = "";
+  input.value="";
 }
 
-/* ENTER KEY SUPPORT */
 document.getElementById("taskInput")
-  .addEventListener("keydown", function(e){
-    if(e.key === "Enter"){
-      smartAdd();
-    }
+.addEventListener("keydown", e=>{
+  if(e.key==="Enter") smartAdd();
 });
 
-/* =========================
-   LOAD + RISK ENGINE
-   ========================= */
-
+/* LOAD + FOCUS ENGINE */
 async function loadTasks() {
   const { data } = await db.from("tasks").select("*");
   const today = new Date();
   const currentYear = today.getFullYear();
 
-  const list = document.getElementById("taskList");
-  list.innerHTML = "";
+  let scoredTasks = data.map(task=>{
+    let score = 0;
 
-  data.forEach(task=>{
+    if(task.progress>=100) return {...task,score:-1};
+
+    if(task.priority===1) score+=50;
+
+    if(task.due_date){
+      const due=new Date(`${currentYear}-${task.due_date}`);
+      const diff=(due-today)/(1000*60*60*24);
+
+      if(diff<0) score+=100;
+      else if(diff<=2 && task.progress<50) score+=70;
+      else score+=Math.max(0,20-diff);
+    }
+
+    score+= (100-task.progress)/5;
+
+    return {...task,score};
+  });
+
+  scoredTasks.sort((a,b)=>b.score-a.score);
+
+  renderFocus(scoredTasks[0]);
+  renderTasks(scoredTasks);
+}
+
+function renderFocus(task){
+  const box=document.getElementById("focusBox");
+  if(!task || task.score<0){
+    box.innerHTML="";
+    return;
+  }
+
+  box.innerHTML=`
+    <div class="focus-box">
+      🔥 <span class="focus-title">Focus Now:</span><br><br>
+      <b>${task.title}</b><br>
+      Due: ${task.due_date||"None"}
+    </div>
+  `;
+}
+
+function renderTasks(tasks){
+  const list=document.getElementById("taskList");
+  const today=new Date();
+  const currentYear=today.getFullYear();
+  list.innerHTML="";
+
+  tasks.forEach(task=>{
     let risk="On Track";
     let riskClass="risk-low";
 
-    if(task.progress >= 100){
+    if(task.progress>=100){
       risk="Completed";
-      riskClass="risk-low";
     }
     else if(task.due_date){
-      const due = new Date(`${currentYear}-${task.due_date}`);
-      const diff = (due - today)/(1000*60*60*24);
+      const due=new Date(`${currentYear}-${task.due_date}`);
+      const diff=(due-today)/(1000*60*60*24);
 
-      if(diff<0){
-        risk="Delayed";
-        riskClass="risk-high";
-      }
-      else if(diff<=2 && task.progress<50){
-        risk="At Risk";
-        riskClass="risk-medium";
-      }
+      if(diff<0){risk="Delayed";riskClass="risk-high";}
+      else if(diff<=2&&task.progress<50){risk="At Risk";riskClass="risk-medium";}
     }
 
     list.innerHTML+=`
       <div class="task">
         <b>${task.title}</b><br>
-        Due: ${task.due_date || "None"}<br>
+        Due: ${task.due_date||"None"}<br>
         <span class="${riskClass}">${risk}</span>
 
         <div class="progress-bar">
@@ -259,28 +285,18 @@ async function loadTasks() {
 }
 
 async function updateProgress(id,amount){
-  const { data } = await db.from("tasks")
-    .select("progress")
-    .eq("id",id)
-    .single();
-
+  const { data }=await db.from("tasks").select("progress").eq("id",id).single();
   let newProgress=Math.max(0,Math.min((data.progress||0)+amount,100));
-
-  await db.from("tasks")
-    .update({
-      progress:newProgress,
-      last_update:new Date().toISOString()
-    })
-    .eq("id",id);
+  await db.from("tasks").update({progress:newProgress,last_update:new Date().toISOString()}).eq("id",id);
 }
 
 async function deleteTask(id){
   await db.from("tasks").delete().eq("id",id);
 }
 
-db.channel('realtime-tasks')
-  .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>loadTasks())
-  .subscribe();
+db.channel('realtime')
+.on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>loadTasks())
+.subscribe();
 
 loadTasks();
 </script>
